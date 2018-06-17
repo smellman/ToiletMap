@@ -1,18 +1,24 @@
 import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { MapView } from 'expo';
-// 1: turf で使う関数をインポート
 import {
   point
 } from '@turf/helpers'
 import destination from '@turf/destination'
+// 1: react-navigationからcreateStackNavigatorをインポート
+import { createStackNavigator } from 'react-navigation'
 
-export default class App extends React.Component {
+// 2: export defaultを削除して、AppからMapScreenに名前を変更
+class MapScreen extends React.Component {
+  // 3: タイトルを追加
+  static navigationOptions = {
+    title: 'トイレマップ',
+  }
+
   constructor(props) {
     super(props)
     this.state = {
-      elements: [], // 2: APIで取得した要素
-      // 3: bboxの指定
+      elements: [],
       south: null,
       west: null,
       north: null,
@@ -20,19 +26,15 @@ export default class App extends React.Component {
     }
   }
 
-  // 4: 地図の画面が変更されるたびにbboxを計算
   onRegionChangeComplete = (region) => {
     const center = point([region.longitude, region.latitude])
-    // 5: 111キロメートルから中心点から縦幅、横幅を計算
     const verticalMeter = 111 * region.latitudeDelta / 2
     const horizontalMeter = 111 * region.longitudeDelta / 2
-    // 6: 実際の距離を計算
     const options = {units: 'kilometers'}
     const south = destination(center, verticalMeter, 180, options)
     const west = destination(center, horizontalMeter, -90, options)
     const north = destination(center, verticalMeter, 0, options)
     const east = destination(center, horizontalMeter, 90, options)
-    // 7: 計算結果(GeoJSON)からbboxを保存する
     this.setState({
       south: south.geometry.coordinates[1],
       west: west.geometry.coordinates[0],
@@ -41,13 +43,11 @@ export default class App extends React.Component {
     })
   }
 
-  // 8: fetchToilet内でawaitを使うのでasyncに
   fetchToilet = async () => {
     const south = this.state.south
     const west = this.state.west
     const north = this.state.north
     const east = this.state.east
-    // 9: テンプレートリテラルを使ってbboxを展開
     const body = `
     [out:json];
     (
@@ -60,12 +60,10 @@ export default class App extends React.Component {
     );
     out;
     `
-    // 10: fetch関数に渡すoptionを指定
     const options = {
       method: 'POST',
       body: body
     }
-    // 11: fetch関数でOverpass APIのエントリポイントにアクセスし、取得したJSONを保存
     try {
       const response = await fetch('https://overpass-api.de/api/interpreter', options)
       const json = await response.json()
@@ -74,10 +72,18 @@ export default class App extends React.Component {
       console.log(e)
     }
   }
+
+  // 4: ElementScreenに画面遷移をする機能を追加
+  gotoElementScreen = (element, title) => {
+    this.props.navigation.navigate('Element', {
+      element: element,
+      title: title,
+    })
+  }
+
   render() {
     return (
       <View style={styles.container}>
-        { /* 12: onRegionChangeCompleteを関連付け */ }
         <MapView
           onRegionChangeComplete={this.onRegionChangeComplete}
           style={styles.mapview}
@@ -87,19 +93,20 @@ export default class App extends React.Component {
             latitudeDelta: 0.00922,
             longitudeDelta: 0.00521,
           }}>
-          { /* 13: マーカーをstateのelementsから配置するようにする */}
           {
             this.state.elements.map((element) => {
               let title = "トイレ"
               if (element.tags["name"] !== undefined) {
                 title = element.tags["name"]
               }
+              // 5: Callout(ポップアップ)を押したときにgotoElementScreenを呼び出すようにする
               return (<MapView.Marker
                 coordinate={{
                   latitude: element.lat,
                   longitude: element.lon,
                 }}
                 title={title}
+                onCalloutPress={() => this.gotoElementScreen(element, title)}
                 key={"id_" + element.id}
               />)
             })
@@ -115,6 +122,30 @@ export default class App extends React.Component {
         </View>
       </View>
     );
+  }
+}
+
+// 6: 詳細を表示するScreenを追加
+class ElementScreen extends React.Component {
+  // 7: タイトルは前の画面から渡されたものを利用
+  static navigationOptions = ({navigation}) => {
+    return {
+      title: navigation.getParam('title', '')
+    }
+  }
+  render() {
+    // 8: 前の画面から渡されたelementを取得し、無かったら空のViewを表示
+    const { navigation } = this.props
+    const element = navigation.getParam('element', undefined)
+    if (element === undefined) {
+      return (<View />)
+    }
+    // 9: 画面遷移のテストのため、elementのidを表示
+    return (
+      <View>
+        <Text>{element.id}</Text>
+      </View>
+    )
   }
 }
 
@@ -147,3 +178,21 @@ const styles = StyleSheet.create({
     textAlign: 'center'
   },
 });
+
+// 10: MapScreenを最初に表示するStackNavigatorを作成
+const RootStack = createStackNavigator(
+  {
+    Map: MapScreen,
+    Element: ElementScreen,
+  },
+  {
+    initialRouteName: 'Map'
+  }
+)
+
+// 11: デフォルトでRootStackの内容をレンダリングする
+export default class App extends React.Component {
+  render() {
+    return <RootStack />
+  }
+}
