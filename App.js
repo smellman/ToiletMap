@@ -1,16 +1,36 @@
 import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+// 1: ScrollViewとFlatListを追加
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  ScrollView,
+  FlatList,
+} from 'react-native';
 import { MapView } from 'expo';
 import {
   point
 } from '@turf/helpers'
 import destination from '@turf/destination'
-// 1: react-navigationからcreateStackNavigatorをインポート
 import { createStackNavigator } from 'react-navigation'
 
-// 2: export defaultを削除して、AppからMapScreenに名前を変更
+// 2: タグと情報を表示するためのFunctional Component
+const TagItem = (props) => {
+  const { tag } = props
+  return (
+    <View style={styles.tagItem}>
+      <View style={styles.tag}>
+        <Text>{tag[0]}</Text>
+      </View>
+      <View style={styles.item}>
+        <Text>{tag[1]}</Text>
+      </View>
+    </View>
+  )
+}
+
 class MapScreen extends React.Component {
-  // 3: タイトルを追加
   static navigationOptions = {
     title: 'トイレマップ',
   }
@@ -73,7 +93,6 @@ class MapScreen extends React.Component {
     }
   }
 
-  // 4: ElementScreenに画面遷移をする機能を追加
   gotoElementScreen = (element, title) => {
     this.props.navigation.navigate('Element', {
       element: element,
@@ -99,7 +118,6 @@ class MapScreen extends React.Component {
               if (element.tags["name"] !== undefined) {
                 title = element.tags["name"]
               }
-              // 5: Callout(ポップアップ)を押したときにgotoElementScreenを呼び出すようにする
               return (<MapView.Marker
                 coordinate={{
                   latitude: element.lat,
@@ -125,25 +143,52 @@ class MapScreen extends React.Component {
   }
 }
 
-// 6: 詳細を表示するScreenを追加
 class ElementScreen extends React.Component {
-  // 7: タイトルは前の画面から渡されたものを利用
   static navigationOptions = ({navigation}) => {
     return {
       title: navigation.getParam('title', '')
     }
   }
   render() {
-    // 8: 前の画面から渡されたelementを取得し、無かったら空のViewを表示
     const { navigation } = this.props
     const element = navigation.getParam('element', undefined)
     if (element === undefined) {
       return (<View />)
     }
-    // 9: 画面遷移のテストのため、elementのidを表示
+    // 3: タグがObjectなので配列に変換
+    let tagItems = []
+    for (const property in element.tags) {
+      tagItems.push([property, element.tags[property]])
+    }
     return (
-      <View>
-        <Text>{element.id}</Text>
+      <View style={{flex: 1}}>
+        { /* 4: elementの座標をもとに地図とマーカーを表示 */ }
+        <MapView
+          style={{flex: 1}}
+          initialRegion={{
+            latitude: element.lat,
+            longitude: element.lon,
+            latitudeDelta: 0.00922,
+            longitudeDelta: 0.00521,
+          }}>
+          <MapView.Marker
+            coordinate={{
+              latitude: element.lat,
+              longitude: element.lon,
+            }}
+          />
+        </MapView>
+        { /* 5: ScrollView と FlatList を使って TagItem をリスト表示 */}
+        <ScrollView style={{flex: 1}}>
+          <FlatList
+            data={tagItems}
+            extraData={this.state}
+            renderItem={({item}) =>
+              <TagItem tag={item} />
+            }
+            keyExtractor={(item, index) => "tag:" + item[0]}
+          />
+        </ScrollView>
       </View>
     )
   }
@@ -177,9 +222,18 @@ const styles = StyleSheet.create({
   buttonItem: {
     textAlign: 'center'
   },
+  // 6: TagItemに使うスタイルを追加
+  tagItem: {
+    flexDirection: 'row',
+  },
+  tag: {
+    flex: 1
+  },
+  item: {
+    flex: 1
+  },
 });
 
-// 10: MapScreenを最初に表示するStackNavigatorを作成
 const RootStack = createStackNavigator(
   {
     Map: MapScreen,
@@ -190,7 +244,6 @@ const RootStack = createStackNavigator(
   }
 )
 
-// 11: デフォルトでRootStackの内容をレンダリングする
 export default class App extends React.Component {
   render() {
     return <RootStack />
